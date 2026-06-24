@@ -17,6 +17,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -31,13 +32,13 @@ jobs:
         id: pages
         uses: actions/configure-pages@v5
 
-      - name: Build client bundle (no nitro)
+      - name: Build client bundle
         env:
           STATIC_BUILD: "1"
           GH_PAGES_BASE: ${{ steps.pages.outputs.base_path }}
         run: bun run vite build
 
-      - name: Snapshot SSR HTML into dist/client/index.html
+      - name: Generate static SPA HTML
         env:
           STATIC_BUILD: "1"
           GH_PAGES_BASE: ${{ steps.pages.outputs.base_path }}

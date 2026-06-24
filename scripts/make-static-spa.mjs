@@ -1,18 +1,12 @@
 // Static-SPA generator for GitHub Pages.
 //
-// TanStack Start is an SSR framework. To ship it as a static SPA we:
-//   1) spawn `vite dev` on an isolated port,
-//   2) fetch the SSR'd "/" HTML,
-//   3) rewrite dev-only asset URLs to the production bundle in dist/client,
-//   4) write dist/client/{index.html, 404.html, .nojekyll}.
-//
 // Run AFTER `STATIC_BUILD=1 vite build` so dist/client/assets already exists.
-import { spawn } from "node:child_process";
+// This intentionally does NOT start `vite dev` in CI: GitHub Actions can leave
+// watcher processes alive and make the Pages build look like it is spinning.
 import { existsSync, readdirSync, writeFileSync, copyFileSync } from "node:fs";
 import { join } from "node:path";
 
 const BASE = process.env.GH_PAGES_BASE || "/";
-const PORT = Number(process.env.STATIC_SPA_PORT || 4179);
 const CLIENT_DIR = "dist/client";
 const ASSETS_DIR = join(CLIENT_DIR, "assets");
 
@@ -30,62 +24,65 @@ if (!jsEntry || !cssEntry) {
   process.exit(1);
 }
 
-console.log(`→ Starting vite dev on :${PORT} to snapshot SSR HTML…`);
-const child = spawn(
-  "npx",
-  ["--yes", "vite", "dev", "--port", String(PORT), "--host", "127.0.0.1", "--strictPort"],
-  { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, NODE_ENV: "development" } },
-);
+const baseNoSlash = BASE.replace(/\/$/, "");
+const assetBase = `${baseNoSlash}/assets` || "/assets";
+const now = Date.now();
 
-let serverLog = "";
-child.stdout.on("data", (d) => (serverLog += d.toString()));
-child.stderr.on("data", (d) => (serverLog += d.toString()));
+const html = `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RefDesk — Citation manager for CS researchers</title>
+    <meta
+      name="description"
+      content="A fast, local-first reference manager for computer science researchers. Import by DOI, tag, search, and export BibTeX."
+    />
+    <meta property="og:title" content="RefDesk — Citation manager for CS researchers" />
+    <meta
+      property="og:description"
+      content="Import by DOI, tag, search, and export BibTeX. Local-first, no account needed."
+    />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary" />
+    <link rel="stylesheet" href="${assetBase}/${cssEntry}" />
+    <link rel="modulepreload" href="${assetBase}/${jsEntry}" />
+  </head>
+  <body>
+    <script class="$tsr" id="$tsr-stream-barrier">
+      (self.$R = self.$R || {})["tsr"] = [];
+      self.$_TSR = {
+        h() { this.hydrated = true; this.c(); },
+        e() { this.streamEnded = true; this.c(); },
+        c() { this.hydrated && this.streamEnded && (delete self.$_TSR, delete self.$R.tsr); },
+        p(e) { this.initialized ? e() : this.buffer.push(e); },
+        buffer: [],
+      };
+      $_TSR.router = (($R) => $R[0] = {
+        manifest: $R[1] = {
+          routes: $R[2] = {
+            __root__: $R[3] = {
+              preloads: $R[4] = ["${assetBase}/${jsEntry}"],
+              scripts: $R[5] = [$R[6] = { attrs: $R[7] = { type: "module", async: true, src: "${assetBase}/${jsEntry}" } }],
+              css: $R[8] = [],
+            },
+          },
+        },
+        matches: $R[9] = [
+          $R[10] = { i: "__root__\\u0000", u: ${now}, s: "success", ssr: true },
+          $R[11] = { i: "\\u0000\\u0000", u: ${now}, s: "success", ssr: true },
+        ],
+        lastMatchId: "\\u0000\\u0000",
+      })($R["tsr"]);
+      $_TSR.e();
+      document.currentScript.remove();
+    </script>
+    <script type="module" async src="${assetBase}/${jsEntry}"></script>
+  </body>
+</html>
+`;
 
-async function snapshot() {
-  const deadline = Date.now() + 90_000;
-  let lastErr = "";
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(`http://127.0.0.1:${PORT}/`);
-      if (res.ok) return await res.text();
-      lastErr = `HTTP ${res.status}`;
-    } catch (e) {
-      lastErr = e instanceof Error ? e.message : String(e);
-    }
-    await new Promise((r) => setTimeout(r, 750));
-  }
-  throw new Error(`vite dev did not serve "/" in time (last: ${lastErr})\n--- server log ---\n${serverLog}`);
-}
-
-try {
-  let html = await snapshot();
-
-  const baseNoSlash = BASE.replace(/\/$/, "");
-  const assetBase = `${baseNoSlash}/assets`;
-
-  // Strip CDN/dev injected scripts that don't belong on a static site
-  html = html.replace(/<script[^>]+src="https?:\/\/cdn\.gpteng\.co[^"]*"[^<]*<\/script>/g, "");
-  // Replace dev stylesheet refs with built CSS
-  html = html.replace(/\/src\/styles\.css/g, `${assetBase}/${cssEntry}`);
-  // Drop tanstack dev-only injected stylesheet
-  html = html.replace(/<link[^>]+\/@tanstack-start\/styles\.css[^>]*\/?>/g, "");
-  // Replace virtual client entry references (preload + manifest + module script)
-  html = html.replace(/\/@id\/virtual:tanstack-start-dev-client-entry/g, `${assetBase}/${jsEntry}`);
-  // Prefix any remaining root-absolute URLs with BASE when serving from a subpath
-  if (baseNoSlash) {
-    html = html.replace(/(href|src)="\/(?!\/)/g, `$1="${baseNoSlash}/`);
-  }
-
-  writeFileSync(join(CLIENT_DIR, "index.html"), html);
-  copyFileSync(join(CLIENT_DIR, "index.html"), join(CLIENT_DIR, "404.html"));
-  writeFileSync(join(CLIENT_DIR, ".nojekyll"), "");
-  console.log(`✓ Wrote ${CLIENT_DIR}/{index.html, 404.html, .nojekyll}  (base="${BASE}")`);
-} catch (err) {
-  console.error("✗ Failed to generate static index.html");
-  console.error(err instanceof Error ? err.message : err);
-  process.exitCode = 1;
-} finally {
-  child.kill("SIGTERM");
-  // Give it a moment to release the port before the process exits
-  await new Promise((r) => setTimeout(r, 200));
-}
+writeFileSync(join(CLIENT_DIR, "index.html"), html);
+copyFileSync(join(CLIENT_DIR, "index.html"), join(CLIENT_DIR, "404.html"));
+writeFileSync(join(CLIENT_DIR, ".nojekyll"), "");
+console.log(`✓ Wrote ${CLIENT_DIR}/{index.html, 404.html, .nojekyll}  (base="${BASE}")`);
