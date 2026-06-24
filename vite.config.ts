@@ -12,4 +12,8 @@ export default defineConfig({
     // nitro/vite builds from this
     server: { entry: "server" },
   },
+  vite: {
+    // For GitHub Pages project sites (e.g. /RefDesk/), CI sets GH_PAGES_BASE.
+    base: process.env.GH_PAGES_BASE || "/",
+  },
 });
