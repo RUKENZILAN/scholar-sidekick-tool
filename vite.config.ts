@@ -6,11 +6,23 @@
 // You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
+const isStaticBuild = process.env.STATIC_BUILD === "1";
+
 export default defineConfig({
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
     // nitro/vite builds from this
     server: { entry: "server" },
+    // For static export (GitHub Pages): prerender the homepage as index.html.
+    ...(isStaticBuild
+      ? {
+          prerender: {
+            enabled: true,
+            crawlLinks: true,
+            routes: ["/"],
+          },
+        }
+      : {}),
   },
   vite: {
     // For GitHub Pages project sites (e.g. /RefDesk/), CI sets GH_PAGES_BASE.
