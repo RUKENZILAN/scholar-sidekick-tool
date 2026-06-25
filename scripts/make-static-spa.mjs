@@ -69,8 +69,8 @@ const html = `<!DOCTYPE html>
           },
         },
         matches: $R[9] = [
-          $R[10] = { i: "__root__\\u0000", u: ${now}, s: "success", ssr: true },
-          $R[11] = { i: "\\u0000\\u0000", u: ${now}, s: "success", ssr: true },
+          $R[10] = { i: "__root__\\u0000", u: ${now}, s: "success", ssr: false },
+          $R[11] = { i: "\\u0000\\u0000", u: ${now}, s: "success", ssr: false },
         ],
         lastMatchId: "\\u0000\\u0000",
       })($R["tsr"]);
